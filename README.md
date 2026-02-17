@@ -42,6 +42,11 @@ Three-tier system (Active → Reinforced → Established) that keeps the most im
 
 **Key insight:** Rules buried in files don't influence behavior. Active repetition with promotion/demotion ensures critical knowledge stays accessible.
 
+### 6. Warm Handoff — Sub-Agent Context Protocol
+Universal onboarding protocol for spawned sub-agents. Every delegation includes environment context, task reasoning, required reading, and verification rules.
+
+**Key insight:** A sub-agent spawned without shared context is a new hire with no onboarding — they'll make confident mistakes based on incomplete information. Delegation without context is abandonment, not empowerment.
+
 ## Implementation
 
 Each pattern includes:
@@ -51,7 +56,7 @@ Each pattern includes:
 - Expected benefits and cost analysis
 - Priority recommendations
 
-**Quick start:** Implement Patterns 5, 2, and 3 first (all ~1 hour each, immediate value). Then Pattern 1 (2-3 hours, highest ceiling). Pattern 4 when first real project starts.
+**Quick start:** Implement Pattern 6 first (15 minutes, prevents sub-agent failures immediately). Then Patterns 5, 2, and 3 (all ~1 hour each, immediate value). Then Pattern 1 (2-3 hours, highest ceiling). Pattern 4 when first real project starts.
 
 See [HUMAN-INTELLIGENCE-PATTERNS.md](./HUMAN-INTELLIGENCE-PATTERNS.md) for full details.
 

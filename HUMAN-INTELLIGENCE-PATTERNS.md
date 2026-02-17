@@ -441,10 +441,161 @@ or most recently violated. Bottom rules = well-established.
 
 ---
 
+## Pattern 6: Warm Handoff — Sub-Agent Context Protocol
+
+### How Humans Use It
+When a manager delegates a task, they don't just say "audit this code." They provide context: why the audit matters, what happened recently, where to find things, who the stakeholders are, what's already been tried. The new person gets an onboarding — even for a short task. Without it, they waste time rediscovering context, make assumptions about things they don't know, and produce work that misses the point.
+
+This is so fundamental to human organizations that we have entire processes for it: onboarding documents, handoff meetings, project briefs, SOPs. A new employee who starts with zero context isn't "autonomous" — they're lost.
+
+### The Problem for AI Agents
+When a primary agent spawns a sub-agent (via `sessions_spawn`, function calls, or any delegation mechanism), the sub-agent starts **cold**:
+- No conversation history
+- No shared memory
+- No knowledge of the environment (file locations, installed packages, virtual environments, services)
+- No understanding of **why** the task was requested
+- No awareness of past mistakes or established protocols
+
+The sub-agent receives only the `task` string and access to tools. Everything else must be independently discovered — or guessed.
+
+**This leads to confident mistakes:** The sub-agent doesn't know what it doesn't know. It fills gaps with assumptions, searches in wrong locations, draws conclusions from incomplete evidence, and reports findings with false confidence. The primary agent, trusting its auditor, acts on flawed findings without verification.
+
+### Real-World Incident (Discovery Origin)
+
+On 2026-02-16, an auditor sub-agent ("ADJUDICATOR") was tasked with verifying whether a Python package existed. It was spawned with only a task description — no environment context.
+
+**What happened:**
+1. ADJUDICATOR ran `pip3 show antaris-guard` globally → "not found"
+2. It checked the wrong GitHub organization → 404
+3. It concluded: "Package doesn't exist. Earlier notes were hallucinated."
+4. The primary agent accepted this finding without independent verification
+5. A formal incident report was filed claiming the primary agent had "fabricated test results"
+6. Correction protocols were built around the false diagnosis
+7. ~2 hours of work went into fixing a problem that didn't exist
+
+**The truth:** The package was installed in a Python virtual environment (`venv-svi`), not globally. The GitHub repo existed under a different org name. The sub-agent didn't know about either because it had no environment context.
+
+**Cascade:** False negative → false incident report → unnecessary remediation → eroded trust → wasted time. All because the sub-agent was cold.
+
+### Agent Implementation
+
+**A Universal Context Protocol** that every sub-agent spawn must include:
+
+#### 1. Environment Block (Required)
+Tell the sub-agent where things live:
+
+```markdown
+Environment:
+- Host: [OS, architecture, key details]
+- Package manager: [pip/npm/etc. — and WHERE packages are installed]
+- Virtual environments: [paths to venvs — ALWAYS check these before concluding packages don't exist]
+- Scripts: [path to utility scripts]
+- Workspace: [path to working directory]
+- Services: [URLs of running services — APIs, UIs, databases]
+- Auth: [How auth is configured — tokens, keyrings, config files]
+```
+
+**Why:** Without this, sub-agents guess where to look. Wrong guesses + confidence = wrong conclusions.
+
+#### 2. Task Context (Required)
+Explain the **why**, not just the **what**:
+
+```markdown
+Task context:
+- What the user asked for: [original request in their words]
+- What I was doing when this triggered: [current workflow state]
+- Why this sub-agent was spawned: [audit? research? implementation? verification?]
+- Relevant decisions already made: [constraints, preferences, prior choices]
+- Expected output: [what format, where to write it, what to include]
+```
+
+**Why:** "Audit this code" vs. "Audit this code because it handles a $9,800 live purchase and we have zero tolerance for bugs" produces very different work.
+
+#### 3. Required Reading (Task-Dependent)
+Point the sub-agent to files it should read before starting:
+
+```markdown
+Required reading:
+- [FILE_1] — [why it's relevant]
+- [FILE_2] — [why it's relevant]
+- MISTAKES.md — check for past failures related to this task
+```
+
+**Why:** The sub-agent has tool access but doesn't know which files matter. Without guidance, it either reads nothing (missing context) or reads everything (wasting tokens).
+
+#### 4. Verification Rules (Required for Any Fact-Finding Task)
+Prevent single-source conclusions:
+
+```markdown
+Verification rules:
+- When checking if X exists: check [location 1] AND [location 2]
+- Never conclude "doesn't exist" from a single search path
+- Show actual command + output as evidence for all findings
+- If uncertain: say "I couldn't verify" rather than guessing
+```
+
+**Why:** The ADJUDICATOR incident happened because one search path returned negative and the sub-agent stopped looking. Multiple verification paths prevent false negatives.
+
+### Template (Copy for Every Spawn)
+
+```
+[TASK]: [What to do]
+
+[CONTEXT]: [Why — what the user asked, what you were doing, relevant decisions]
+
+[ENVIRONMENT]:
+- Packages: [where installed — venvs, global, etc.]
+- Scripts: [path]
+- Workspace: [path]
+- Services: [URLs]
+
+[REQUIRED READING]:
+- [Relevant files with reasons]
+- Check MISTAKES.md for related past failures
+
+[VERIFICATION]:
+- Check [location 1] AND [location 2] for existence claims
+- Never conclude "doesn't exist" from single search
+- Show command + output as evidence
+
+[OUTPUT]: Write to [path/filename]
+```
+
+### Integration
+- **AGENTS.md boot sequence:** "Before spawning ANY sub-agent, read SUBAGENTS.md § Universal Context Protocol"
+- **PREFLIGHT CODE_AUDIT:** Trigger includes mandatory context passing in audit spawn
+- **MISTAKES.md:** Sub-agent errors get traced back to context gaps — was the spawn missing environment? task context? reading list?
+- **Retrospectives (Pattern 3):** Weekly check: "Did any sub-agent spawn this week lack proper context?"
+
+### Applicability Beyond Single-Agent Systems
+This pattern is critical for:
+- **Multi-agent architectures** — Any system where agents delegate to other agents
+- **Agent-to-agent handoffs** — When one agent's output becomes another's input
+- **Supervisor/worker patterns** — Orchestrator agents spawning specialized workers
+- **Human-AI teams** — The same onboarding principles apply when humans delegate to AI agents
+
+The underlying principle is universal: **delegation without context is abandonment, not empowerment.**
+
+### Expected Benefits
+- Eliminates "cold agent" methodology errors (wrong search paths, missing venvs, incorrect assumptions)
+- Prevents cascading misdiagnosis from false negative findings
+- Sub-agents produce higher-quality work because they understand the full picture
+- Reduces back-and-forth corrections (get it right first time)
+- Creates accountability: if a sub-agent fails, you can trace whether it received adequate context
+
+### Implementation Complexity: **Easy**
+- Create a spawning template (~15 min)
+- Add to boot sequence (~5 min)
+- Discipline to use the template every time (ongoing)
+- Token cost: ~200-500 additional tokens per spawn (negligible vs. cost of wrong conclusions)
+
+---
+
 ## Implementation Priority
 
 | # | Pattern | Impact | Complexity | Do First? |
 |---|---------|--------|------------|-----------|
+| 6 | Warm Handoff | 🔴 Critical | Easy | ✅ **Immediately** — 15 min, prevents cascading failures |
 | 5 | Spaced Repetition | 🔴 High | Easy | ✅ Yes — 1 hour, immediate value |
 | 2 | Mental Models | 🔴 High | Easy | ✅ Yes — 1 hour, compounds over time |
 | 3 | Retrospectives | 🔴 High | Easy | ✅ Yes — 1 hour, weekly cadence |
@@ -452,9 +603,10 @@ or most recently violated. Bottom rules = well-established.
 | 4 | Gantt-State Timeline | 🟡 Medium | Medium | ⏳ When first real project starts |
 
 **Recommended rollout:**
-1. **Week 1:** Implement Patterns 5, 2, 3 (all easy, independent)
-2. **Week 2:** Implement Pattern 1 (consolidation run — builds on retro infrastructure)
-3. **When Olympus starts:** Implement Pattern 4 (needs a real project to be useful)
+1. **Now:** Implement Pattern 6 (15 minutes, prevents sub-agent failures immediately)
+2. **Week 1:** Implement Patterns 5, 2, 3 (all easy, independent)
+3. **Week 2:** Implement Pattern 1 (consolidation run — builds on retro infrastructure)
+4. **When Olympus starts:** Implement Pattern 4 (needs a real project to be useful)
 
 ---
 
