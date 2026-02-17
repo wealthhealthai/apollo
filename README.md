@@ -43,7 +43,7 @@ Three-tier system (Active → Reinforced → Established) that keeps the most im
 **Key insight:** Rules buried in files don't influence behavior. Active repetition with promotion/demotion ensures critical knowledge stays accessible.
 
 ### 6. Warm Handoff — Sub-Agent Context Protocol
-Universal onboarding protocol for spawned sub-agents. Every delegation includes environment context, task reasoning, required reading, and verification rules.
+Universal onboarding protocol for spawned sub-agents. Every delegation includes environment context, task reasoning, required reading, and verification rules. Includes **ContextPacket API** evolution — a programmatic interface that queries the memory layer to automatically build context packets for sub-agent spawns, eliminating the discipline requirement of manual protocols.
 
 **Key insight:** A sub-agent spawned without shared context is a new hire with no onboarding — they'll make confident mistakes based on incomplete information. Delegation without context is abandonment, not empowerment.
 
