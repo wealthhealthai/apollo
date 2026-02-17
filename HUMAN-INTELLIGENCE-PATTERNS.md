@@ -589,6 +589,148 @@ The underlying principle is universal: **delegation without context is abandonme
 - Discipline to use the template every time (ongoing)
 - Token cost: ~200-500 additional tokens per spawn (negligible vs. cost of wrong conclusions)
 
+### Evolution: ContextPacket API — From Manual Protocol to Automatic Injection
+
+**The manual protocol (above) is the right immediate fix, but it has a fatal flaw: it requires discipline.** Every spawn must remember to follow the template. One forgotten spawn = cold agent = potential failure.
+
+**The systematic solution: bake context injection into the memory layer.**
+
+#### Design: memory.build_context_packet()
+
+```python
+# Parent agent preparing to spawn sub-agent
+context = memory.build_context_packet(
+    task="verify antaris-guard installation",
+    tags=["antaris-guard", "installation", "venv", "python-packages"],
+    include_environment=True,
+    include_past_failures=True,
+    max_memories=10
+)
+
+# Returns structured context block
+{
+    "environment": {
+        "venv_path": "~/.openclaw/venv-svi/",
+        "scripts_path": "~/.openclaw/scripts/",
+        "workspace": "~/.openclaw/workspace/",
+        "key_services": {"comfyui": "http://10.0.0.35:8188"}
+    },
+    "task_context": "Verifying Python package installation",
+    "relevant_memories": [
+        {
+            "content": "Python packages installed in venv-svi, not global",
+            "source": "tools/venv",
+            "priority": "P0"
+        },
+        {
+            "content": "Always activate venv before pip commands",
+            "source": "mistakes/004",
+            "priority": "P0"
+        },
+        {
+            "content": "Check multiple locations before concluding not found",
+            "source": "mistakes/004",
+            "priority": "P0"
+        }
+    ],
+    "past_failures": [
+        "MISTAKE #004: ADJUDICATOR searched globally, missed venv-svi"
+    ],
+    "verification_rules": [
+        "Check venv AND global for packages",
+        "Never conclude 'doesn't exist' from single search path"
+    ]
+}
+
+# Inject into spawn (two options)
+# Option 1: Structured in task description
+sessions_spawn(
+    task=f"""
+{format_context_packet(context)}
+
+Task: {actual_task_description}
+"""
+)
+
+# Option 2: Future enhancement - native context parameter
+sessions_spawn(
+    task=actual_task_description,
+    context_packet=context  # If sessions_spawn API supports it
+)
+```
+
+#### How It Works
+
+1. **Leverages existing BM25 search:** `antaris-memory` already has tag-based retrieval. `build_context_packet()` is a higher-level wrapper that queries for task-relevant memories and packages them for handoff.
+
+2. **Automatic tag inference (optional):** Could analyze task description to extract relevant tags without manual specification:
+   ```python
+   context = memory.build_context_packet(
+       task="Audit the SVI bot for security vulnerabilities",
+       auto_infer_tags=True  # Extracts: "svi", "bot", "security", "audit"
+   )
+   ```
+
+3. **Priority-weighted selection:** P0 memories (critical rules) always included. P1-P3 fill remaining slots based on relevance score.
+
+4. **Learn from failures:** When sub-agent fails, capture what context was missing:
+   ```python
+   memory.record_subagent_failure(
+       task="verify package",
+       failure="Concluded package doesn't exist - missed venv",
+       missing_context=["venv_path", "multiple-search-paths rule"]
+   )
+   # Future packets for "verify package" tasks auto-include this
+   ```
+
+#### Benefits Over Manual Protocol
+
+| Manual Protocol | ContextPacket API |
+|-----------------|-------------------|
+| Requires discipline to follow template | Automatic - just call API |
+| Same context every time | Learns from failures, adapts per task |
+| Manual tag selection | Auto-infer tags from task description |
+| Copy-paste template | Clean programmatic interface |
+| Works today | Requires implementation |
+
+#### Integration with Existing Patterns
+
+- **Spaced Repetition (Pattern 5):** CRITICAL-RULES.md entries get tagged and surface in context packets automatically
+- **MISTAKES.md:** Past failures become first-class context that auto-injects into relevant spawns
+- **Consolidation (Pattern 1):** Nightly run can analyze which context was actually helpful, prune what wasn't
+- **Mental Models (Pattern 2):** MODELS.md entries get tagged and surface as relevant memories
+
+#### Implementation Roadmap
+
+**Phase 1: Prototype (kuro-memory.py)** (~2-3 hours)
+- Build `build_context_packet()` function in workspace wrapper
+- Query antaris-memory BM25 index for relevant memories
+- Format output as structured dict + markdown block
+- Test with real sub-agent spawn
+
+**Phase 2: Refinement** (~2-3 hours)
+- Add automatic tag inference from task description
+- Implement priority weighting (P0 always included, P1-P3 scored)
+- Add failure learning mechanism
+- Integrate with MISTAKES.md and CRITICAL-RULES.md
+
+**Phase 3: Core Integration** (timing: when Jake's ready)
+- Propose for `antaris-memory` core library
+- Add native `context_packet` parameter to `sessions_spawn` (OpenClaw feature request?)
+- Build cross-agent context sharing (Kuro's packets can warm Jake's Moro)
+
+#### Why This Matters Long-Term
+
+Manual protocols are **interim solutions.** They work when you remember them, fail when you forget, and don't scale across teams.
+
+**Systematic solutions** remove the decision point entirely. With ContextPacket API:
+- Every agent using `antaris-memory` gets warm handoffs for free
+- No training required ("just call this API before spawning")
+- Failure lessons propagate automatically across all future spawns
+- Scales to multi-agent systems (supervisor/worker, agent swarms, human-AI teams)
+
+The goal: make cold agent spawns architecturally impossible, not just discouraged.
+
 ---
 
 ## Implementation Priority
